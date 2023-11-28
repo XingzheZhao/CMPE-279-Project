@@ -1,0 +1,4 @@
+{"level":"info","message":{"body":"samz","method":"POST","path":"/","query":{},"timestamp":"2023-11-28T22:18:52.257Z"}}
+{"level":"info","message":"Login successful","timestamp":"2023-11-28T22:18:52.344Z","username":"samz"}
+{"level":"info","message":{"method":"GET","path":"/profile","query":{},"timestamp":"2023-11-28T22:18:52.368Z"}}
+{"level":"info","message":"Accessed profile page","timestamp":"2023-11-28T22:18:52.368Z","username":"samz"}

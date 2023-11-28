@@ -6,6 +6,7 @@ const cors = require("cors");
 const uuid = require("uuid");
 const https = require("https");
 const fs = require("fs");
+const winston = require("winston");
 
 const app = express();
 const cookieParser = require("cookie-parser");
@@ -33,6 +34,28 @@ app.use((req, res, next) => {
     "Strict-Transport-Security",
     "max-age=31536000; includeSubDomains; preload"
   );
+  next();
+});
+
+// Configure winston logger
+const logger = winston.createLogger({
+  level: "info",
+  format: winston.format.json(),
+  transports: [
+    new winston.transports.Console(),
+    new winston.transports.File({ filename: "combined.log" }),
+  ],
+});
+
+// Middleware to log incoming requests
+app.use((req, res, next) => {
+  logger.info({
+    method: req.method,
+    path: req.path,
+    query: req.query,
+    body: req.body.username,
+    timestamp: new Date().toISOString(),
+  });
   next();
 });
 
@@ -74,12 +97,21 @@ app.post("/register", async (req, res) => {
     );
 
     if (row.affectedRows === 1) {
+      logger.info({
+        message: "User registered successfully",
+        username,
+        timestamp: new Date().toISOString(),
+      });
       return res.status(201).json({ message: "User Created" });
     } else {
       return res.status(500).json({ message: "Unable to create account!" });
     }
   } catch (error) {
-    console.log(error);
+    logger.error({
+      message: "Error during registration",
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
     res.status(500).json({ message: "Account was not created!" });
   }
 });
@@ -112,6 +144,13 @@ app.post("/", async (req, res) => {
           maxAge: 1000 * 60 * 60,
           httpOnly: true,
         });
+
+        logger.info({
+          message: "Login successful",
+          username,
+          timestamp: new Date().toISOString(),
+        });
+
         return res.status(200).json({
           message: "Login Successful",
           token: token,
@@ -124,7 +163,11 @@ app.post("/", async (req, res) => {
       }
     });
   } catch (error) {
-    console.log(error);
+    logger.error({
+      message: "Error during login",
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
     res.status(500).json({ message: "There's an issue with login" });
   }
 });
@@ -148,7 +191,13 @@ const verifyToken = (req, res, next) => {
 };
 
 app.get("/profile", verifyToken, async (req, res) => {
-  res.json({ message: `Hello ${req.username}` });
+  // Log access to the profile page
+  logger.info({
+    message: "Accessed profile page",
+    username: req.username || "unknown",
+    timestamp: new Date().toISOString(),
+  });
+  res.json({ message: `Hello ${req.username}`, username: req.username });
 });
 
 // server configuration with key cert for HSTS
