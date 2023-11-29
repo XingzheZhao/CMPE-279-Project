@@ -6,7 +6,8 @@ const cors = require("cors");
 const uuid = require("uuid");
 const https = require("https");
 const fs = require("fs");
-const winston = require("winston");
+// const winston = require("winston");
+// const { Loggly } = require("winston-loggly");
 
 const app = express();
 const cookieParser = require("cookie-parser");
@@ -16,19 +17,19 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cors({ credentials: true, origin: "https://localhost:3002" }));
 const PORT = process.env.PORT || 2001;
 
-// ! Set X-Content-Type-Options header
+// ! Set X-Content-Type-Options header for preventing MIME sniffing
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   next();
 });
 
-// ! Set Content Security Policy (CSP) headers
+// ! Set Content Security Policy (CSP) headers for Preventing XSS
 app.use((req, res, next) => {
   res.setHeader("Content-Security-Policy", "default-src 'self'");
   next();
 });
 
-// ! Set Strict-Transport-Security header (HSTS)
+// ! Set Strict-Transport-Security header (HSTS) for enforcing HTTPS
 app.use((req, res, next) => {
   res.setHeader(
     "Strict-Transport-Security",
@@ -37,27 +38,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Configure winston logger
-const logger = winston.createLogger({
-  level: "info",
-  format: winston.format.json(),
-  transports: [
-    new winston.transports.Console(),
-    new winston.transports.File({ filename: "combined.log" }),
-  ],
-});
-
-// Middleware to log incoming requests
-app.use((req, res, next) => {
-  logger.info({
-    method: req.method,
-    path: req.path,
-    query: req.query,
-    body: req.body.username,
-    timestamp: new Date().toISOString(),
-  });
-  next();
-});
+const logger = require("./logger");
 
 app.post("/check-username", async (req, res) => {
   try {
@@ -89,6 +70,7 @@ app.post("/register", async (req, res) => {
       return res.status(409).json({ message: "username is taken" });
     }
 
+    // ! hashing password and store digest in the db
     let hashedPassword = await bcrypt.hash(password, 10);
 
     const [row] = await db.query(
@@ -97,28 +79,25 @@ app.post("/register", async (req, res) => {
     );
 
     if (row.affectedRows === 1) {
-      logger.info({
-        message: "User registered successfully",
-        username,
-        timestamp: new Date().toISOString(),
-      });
+      logger.info(`user ${username} has successfully created an account!`);
       return res.status(201).json({ message: "User Created" });
     } else {
+      logger.info(
+        `user ${username} has attempted to create account unser an existing username`
+      );
       return res.status(500).json({ message: "Unable to create account!" });
     }
   } catch (error) {
-    logger.error({
-      message: "Error during registration",
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
+    logger.info(
+      `user ${username} has failed to create account due to error occured`
+    );
     res.status(500).json({ message: "Account was not created!" });
   }
 });
 
+// ! login
 app.post("/", async (req, res) => {
   try {
-    // console.log("sup");
     const { username, password } = req.body;
     const [row] = await db.query("SELECT * FROM Users WHERE username=?", [
       username,
@@ -127,7 +106,7 @@ app.post("/", async (req, res) => {
     if (row.length === 0) {
       return res.status(404).json({ message: "User not found" });
     }
-
+    // ! hashing password and compare the digest to the one in the database
     bcrypt.compare(password, row[0].user_password, (err, result) => {
       if (result) {
         // ! generate a secure, random session ID
@@ -145,12 +124,7 @@ app.post("/", async (req, res) => {
           httpOnly: true,
         });
 
-        logger.info({
-          message: "Login successful",
-          username,
-          timestamp: new Date().toISOString(),
-        });
-
+        logger.info(`user ${username} has successfully logged in`);
         return res.status(200).json({
           message: "Login Successful",
           token: token,
@@ -159,15 +133,12 @@ app.post("/", async (req, res) => {
           role: role,
         });
       } else {
+        logger.info(`user ${username} has attempted to log in`);
         res.status(400).json({ message: "Wrong Username or password" });
       }
     });
   } catch (error) {
-    logger.error({
-      message: "Error during login",
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
+    logger.error(`user ${username} failed to log in due to error occurred`);
     res.status(500).json({ message: "There's an issue with login" });
   }
 });
@@ -191,18 +162,15 @@ const verifyToken = (req, res, next) => {
 };
 
 app.get("/profile", verifyToken, async (req, res) => {
-  // Log access to the profile page
-  logger.info({
-    message: "Accessed profile page",
-    username: req.username || "unknown",
-    timestamp: new Date().toISOString(),
-  });
+  logger.info(
+    `user ${req.username} has successfully accessed the profile page`
+  );
   res.json({ message: `Hello ${req.username}`, username: req.username });
 });
 
 // server configuration with key cert for HSTS
-const keyPath = "./key.pem";
-const certPath = "./cert.pem";
+const keyPath = "./key.pem"; // ! private key
+const certPath = "./cert.pem"; // ! self-signed certificate
 
 const options = {
   key: fs.readFileSync(keyPath),
