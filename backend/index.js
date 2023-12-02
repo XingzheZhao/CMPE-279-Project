@@ -17,6 +17,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cors({ credentials: true, origin: "https://localhost:3002" }));
 const PORT = process.env.PORT || 2001;
 
+var saltRounds = 10;
+
 // ! Set X-Content-Type-Options header for preventing MIME sniffing
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -48,7 +50,9 @@ app.post("/check-username", async (req, res) => {
     ]);
 
     if (result.length > 0) {
-      console.log("sup");
+      logger.info(
+        `user ${username} has attempted to create account under an existing username`
+      );
       return res.json({ message: "username is taken", isTaken: true });
     } else {
       return res.json({ isTaken: false });
@@ -61,17 +65,21 @@ app.post("/check-username", async (req, res) => {
 app.post("/register", async (req, res) => {
   try {
     const { username, password } = req.body;
-
     const [result] = await db.query("SELECT * FROM Users WHERE username=?;", [
       username,
     ]);
 
     if (result.length > 0) {
+      logger.info(
+        `user ${username} has attempted to create account under an existing username`
+      );
       return res.status(409).json({ message: "username is taken" });
     }
-
+    console.log("sup");
     // ! hashing password and store digest in the db
-    let hashedPassword = await bcrypt.hash(password, 10);
+    let salt = await bcrypt.genSalt(saltRounds);
+    let hashedPassword = await bcrypt.hash(password, salt);
+    console.log(hashedPassword);
 
     const [row] = await db.query(
       "INSERT INTO Users (username, user_password) VALUES (?, ?);",
@@ -82,14 +90,11 @@ app.post("/register", async (req, res) => {
       logger.info(`user ${username} has successfully created an account!`);
       return res.status(201).json({ message: "User Created" });
     } else {
-      logger.info(
-        `user ${username} has attempted to create account unser an existing username`
-      );
       return res.status(500).json({ message: "Unable to create account!" });
     }
   } catch (error) {
     logger.info(
-      `user ${username} has failed to create account due to error occured`
+      `user ${username} has failed to create account due to error occurred`
     );
     res.status(500).json({ message: "Account was not created!" });
   }
